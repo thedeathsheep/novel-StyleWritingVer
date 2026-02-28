@@ -6,9 +6,9 @@ import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 import Providers from "./providers";
 
-const title = "Novel - Notion-style WYSIWYG editor with AI-powered autocompletions";
+const title = "StyleEvent — 风格写作";
 const description =
-  "Novel is a Notion-style WYSIWYG editor with AI-powered autocompletions. Built with Tiptap, OpenAI, and Vercel AI SDK.";
+  "StyleEvent is an inspiration-resonance writing assistant. It retrieves, never generates — surfacing sourced fragments to spark your creativity.";
 
 export const metadata: Metadata = {
   title,
@@ -17,17 +17,15 @@ export const metadata: Metadata = {
     title,
     description,
   },
-  twitter: {
-    title,
-    description,
-    card: "summary_large_image",
-    creator: "@steventey",
-  },
-  metadataBase: new URL("https://novel.sh"),
+    twitter: {
+      title,
+      description,
+      card: "summary_large_image",
+    },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#ffffff",
+  themeColor: "#0f0f0f",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -95,6 +95,10 @@
   }
 }
 
+.text-glow {
+  text-shadow: 0 0 15px rgba(139, 92, 246, 0.1);
+}
+
 
 pre {
   background: #0d0d0d;

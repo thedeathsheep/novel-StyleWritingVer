@@ -1,0 +1,29 @@
+---
+description: StyleEvent 编辑器集成与 RAG 检索实现约定
+globs: apps/web/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# 编辑器与 RAG 实现约定
+
+## 灵感区与布局
+
+- 灵感区组件：纯文本列表，每条**正文 + 小字出处**；无卡片框、无侧栏；样式可对齐 `components/style-event-prototype.tsx`（背光、浮动）。
+- 布局顺序：上 → 品牌（StyleEvent）；中上 → 灵感区；中下 → 编辑器；底 → 状态。`useEditor()` 必须在 `EditorRoot` 内调用，触发逻辑/灵感区 state 建议放在包含 `EditorContent` 的同一父组件或该组件树内。
+
+## 触发与请求
+
+- **查询文本**：当前段落/句或选中内容（Tiptap `editor.state`、`getPrevText` 或选区 `doc.textBetween`）。
+- **节流**：停顿 1.5s（debounce）或选区变化（有选中即触发）；触发时用 `AbortController` 取消上一次未完成的请求，只发最新一次。
+- **超时**：请求 2s 超时；超时或失败时返回空列表，不更新为错误弹窗。
+
+## API 契约（Resonate）
+
+- 请求：`POST /api/resonate`（或项目约定的 path），body `{ query: string }`。
+- 响应：`{ items: { text: string, source: string }[] }`；`source` 至少为库名，禁止编造。
+- 前端：空结果或超时 → 灵感区显示占位或保持上一状态；新条插入列表**顶部**，列表向上滑动，最大条数可配置（如 6）。
+
+## 代码与类型
+
+- 使用 TypeScript；新增 API 与状态类型与上述契约一致。
+- 不在此仓库内硬编码 API Key；使用环境变量或配置。
