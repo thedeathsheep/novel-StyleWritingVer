@@ -3,7 +3,8 @@ import { readFile } from "fs/promises";
 import { join } from "path";
 import OpenAI from "openai";
 import type { InspirationItem } from "@/lib/types";
-import { searchChunks, type ChunkWithEmbedding } from "@/lib/vector-store";
+import { searchChunks, searchChunksWithScores, type ChunkWithEmbedding } from "@/lib/vector-store";
+import { getLibraryChunks } from "@/lib/user-libraries";
 
 const TOP_K = 6;
 const TIMEOUT_MS = 2000;
@@ -105,8 +106,26 @@ async function loadEmbeddings(): Promise<ChunkWithEmbedding[] | null> {
 
 const queryCache = new Map<string, { items: InspirationItem[]; ts: number }>();
 
-function getCached(query: string): InspirationItem[] | null {
-  const key = query.trim();
+function librariesCacheKey(libraries: { id: string; weight: number }[]): string {
+  if (libraries.length === 0) return "";
+  const parts = [...libraries]
+    .sort((a, b) => a.id.localeCompare(b.id))
+    .map((l) => `${l.id}:${l.weight}`);
+  return parts.join(",");
+}
+
+function cacheKey(query: string, libraryId?: string, libraries?: { id: string; weight: number }[]): string {
+  const q = query.trim();
+  if (libraries && libraries.length > 0) return `multi:${librariesCacheKey(libraries)}:${q}`;
+  return libraryId ? `${libraryId}:${q}` : q;
+}
+
+function getCached(
+  query: string,
+  libraryId?: string,
+  libraries?: { id: string; weight: number }[]
+): InspirationItem[] | null {
+  const key = cacheKey(query, libraryId, libraries);
   const ent = queryCache.get(key);
   if (!ent) return null;
   if (Date.now() - ent.ts > CACHE_TTL_MS) {
@@ -116,19 +135,44 @@ function getCached(query: string): InspirationItem[] | null {
   return ent.items;
 }
 
-function setCache(query: string, items: InspirationItem[]) {
+function setCache(
+  query: string,
+  items: InspirationItem[],
+  libraryId?: string,
+  libraries?: { id: string; weight: number }[]
+) {
   if (queryCache.size > 50) {
     const first = queryCache.keys().next().value;
     if (first) queryCache.delete(first);
   }
-  queryCache.set(query.trim(), { items, ts: Date.now() });
+  queryCache.set(cacheKey(query, libraryId, libraries), { items, ts: Date.now() });
 }
+
+/** Normalize library weights to sum to 1; return array of { id, weight }. */
+function normalizeLibraries(
+  libraries: { id: string; weight: number }[]
+): { id: string; weight: number }[] {
+  const filtered = libraries.filter((l) => l.id && typeof l.weight === "number" && l.weight > 0);
+  if (filtered.length === 0) return [];
+  const sum = filtered.reduce((s, l) => s + l.weight, 0);
+  return sum > 0 ? filtered.map((l) => ({ id: l.id, weight: l.weight / sum })) : filtered;
+}
+
+const PER_LIBRARY_TOP = 10;
 
 export async function POST(req: Request) {
   const start = Date.now();
   try {
     const body = await req.json();
     const query = body?.query;
+    const libraryId = typeof body?.libraryId === "string" ? body.libraryId.trim() || undefined : undefined;
+    const rawLibraries = Array.isArray(body?.libraries)
+      ? (body.libraries as { id?: string; weight?: number }[]).filter((l) => l?.id)
+      : [];
+    const libraries = normalizeLibraries(
+      rawLibraries.map((l) => ({ id: String(l.id).trim(), weight: Number(l.weight) || 0.5 }))
+    );
+
     if (!query || typeof query !== "string" || query.trim().length < 2) {
       return NextResponse.json({ items: [] });
     }
@@ -142,13 +186,60 @@ export async function POST(req: Request) {
         ),
       ]);
 
+    const apiKey = req.headers.get("X-OpenAI-API-Key")?.trim() || process.env.OPENAI_API_KEY;
+
     const items = await withTimeout((async () => {
-      const cached = getCached(trimmed);
+      const cached = getCached(trimmed, libraryId, libraries.length > 0 ? libraries : undefined);
       if (cached) return cached;
 
-      const apiKey = process.env.OPENAI_API_KEY;
-      const chunks = await loadEmbeddings();
+      // Multi-library: one embedding, then per-library search and weighted merge
+      if (libraries.length > 0 && apiKey) {
+        const openai = new OpenAI({ apiKey });
+        const res = await openai.embeddings.create({
+          model: "text-embedding-3-small",
+          input: trimmed,
+        });
+        const queryEmbedding = res.data[0].embedding;
+        const merged = new Map<string, { item: InspirationItem; score: number }>();
+        for (const { id: libId, weight } of libraries) {
+          const userChunks = await getLibraryChunks(libId);
+          if (userChunks.length === 0) continue;
+          const scored = searchChunksWithScores(
+            userChunks as ChunkWithEmbedding[],
+            queryEmbedding,
+            PER_LIBRARY_TOP
+          );
+          for (const { item, score } of scored) {
+            const key = `${item.text}\t${item.source}`;
+            const weighted = score * weight;
+            const existing = merged.get(key);
+            if (!existing || existing.score < weighted) merged.set(key, { item, score: weighted });
+          }
+        }
+        const results = [...merged.values()]
+          .sort((a, b) => b.score - a.score)
+          .slice(0, TOP_K)
+          .map((x) => x.item);
+        setCache(trimmed, results, undefined, libraries);
+        return results;
+      }
 
+      if (libraryId && apiKey) {
+        const userChunks = await getLibraryChunks(libraryId);
+        if (userChunks.length > 0) {
+          const openai = new OpenAI({ apiKey });
+          const res = await openai.embeddings.create({
+            model: "text-embedding-3-small",
+            input: trimmed,
+          });
+          const queryEmbedding = res.data[0].embedding;
+          const results = searchChunks(userChunks as ChunkWithEmbedding[], queryEmbedding, TOP_K);
+          setCache(trimmed, results, libraryId);
+          return results;
+        }
+      }
+
+      const chunks = await loadEmbeddings();
       if (apiKey && chunks && chunks.length > 0) {
         const openai = new OpenAI({ apiKey });
         const res = await openai.embeddings.create({

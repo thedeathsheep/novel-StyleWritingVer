@@ -5,6 +5,8 @@ alwaysApply: true
 
 # StyleEvent（风格写作）项目规则
 
+- **本项目为全程 vibe coding 项目**：从产品文档、改造规划到实现均在 AI 辅助下完成；协作与改代码时可按「迭代式、文档驱动、边聊边改」的方式推进，优先对齐 `docs/` 内需求与 TODO。
+
 ## 产品定位
 
 - **产品名**：StyleEvent（风格写作）；曾用名 Echo / 回响。

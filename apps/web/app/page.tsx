@@ -15,12 +15,20 @@ export default function Page() {
             风格写作
           </span>
         </div>
-        <a
-          href="/prototype"
-          className="text-[10px] text-zinc-600 hover:text-zinc-400 tracking-wider uppercase transition-colors"
-        >
-          Prototype
-        </a>
+        <div className="flex items-center gap-6">
+          <a
+            href="/libraries"
+            className="text-[10px] text-zinc-600 hover:text-zinc-400 tracking-wider uppercase transition-colors"
+          >
+            知识库
+          </a>
+          <a
+            href="/settings"
+            className="text-[10px] text-zinc-600 hover:text-zinc-400 tracking-wider uppercase transition-colors"
+          >
+            设置
+          </a>
+        </div>
       </nav>
 
       {/* Main editor */}

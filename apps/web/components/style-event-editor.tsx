@@ -32,6 +32,8 @@ import { slashCommand, suggestionItems } from "./tailwind/slash-command";
 import InspirationPanel from "./inspiration-panel";
 import ResonanceBridge from "./resonance-bridge";
 import { useResonanceTrigger } from "@/hooks/use-resonance-trigger";
+import { useCurrentLibrary } from "@/hooks/use-current-library";
+import { useResonanceLibraries } from "@/hooks/use-resonance-libraries";
 
 const hljs = require("highlight.js");
 
@@ -47,7 +49,17 @@ export default function StyleEventEditor() {
   const [openLink, setOpenLink] = useState(false);
   const [openAI, setOpenAI] = useState(false);
 
-  const { items, loading, trigger, triggerImmediate } = useResonanceTrigger();
+  const { currentLibraryId } = useCurrentLibrary();
+  const { libraries: resonanceLibraries } = useResonanceLibraries();
+  const bodyExtra =
+    resonanceLibraries.length > 0
+      ? { libraries: resonanceLibraries }
+      : currentLibraryId
+        ? { libraryId: currentLibraryId }
+        : {};
+  const { items, loading, trigger, triggerImmediate } = useResonanceTrigger({
+    bodyExtra,
+  });
 
   const highlightCodeblocks = (content: string) => {
     const doc = new DOMParser().parseFromString(content, "text/html");

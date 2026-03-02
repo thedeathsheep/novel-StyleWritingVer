@@ -37,19 +37,28 @@
 - [x] **4.1** 加载态：灵感区根据 `loading` 显示「Resonating」轻量 loading
 - [x] **4.2** 列表行为：新条插入顶部、去重、最大 6 条，fade-in-up + float-slow 动效
 - [x] **4.3** 延迟观测：开发环境前端 console 打点 `[StyleEvent] resonate latency: Xms`；服务端 dev 打点 `[resonate] query=... items=N ms=X`
-- [x] **4.4** 主写作页精简：已隐藏 Usage in dialog、Docs 等，仅保留品牌 + Prototype 链接
+- [x] **4.4** 主写作页精简：已隐藏 Usage in dialog、Docs 等，仅保留品牌 + 知识库 + 设置链接
 
 ---
 
-## V1 已完成（本版）
+## MVP / 原型阶段（开发/自托管可用）
 
 - [x] 种子数据 `lib/data/resonate-chunks.json` + 预计算脚本 `npm run embed-seed` → `lib/data/embeddings.json`
 - [x] 内存向量检索 `lib/vector-store.ts`（cosine 相似度）+ API 接入；2s 超时、查询缓存（最近 50 条 / 5min TTL）
 - [x] 延迟观测：前端/服务端 dev 打点
 
+## V1 正式版（面向用户）
+
+- [x] 设置页：OpenAI API Key 填写、存 localStorage、当前状态文案
+- [x] 前端请求携带 Key：resonate 与 ingest 请求头 `X-OpenAI-API-Key`（有则带）
+- [x] 服务端优先使用请求头 Key：resonate、ingest 再回退 `process.env`
+- [x] 导航去原型化：主导航「Prototype」改为「设置」，保留 `/prototype` 路由
+- [x] 未配置提示：灵感区/写作页在未配置 Key 时提示前往设置
+
 ## 可选 / 后续
 
-- [ ] 封装 `use-resonance-fetch.ts`（API 调用 + 超时 + Abort 可单独复用）
-- [ ] 多库与权重、混合检索 + rerank（V1.5）
-- [ ] 用户自定义知识库（创建/导入/建索引/选库权重）
+- [x] 封装 `use-resonance-fetch.ts`（API 调用 + 超时 + Abort 可单独复用）
+- [x] 多库与权重（V1.5）：API 支持 `libraries: { id, weight }[]` 按权重合并；前端知识库页「参与多库检索」+ 权重，写作页自动使用
+- [ ] 混合检索 + rerank（V1.5 后续）：向量 + BM25 → rerank 取 top-3～5
+- [x] 用户自定义知识库 MVP：创建/命名库、导入文本（粘贴）、建索引（导入时即写入）、检索时选库（单库，localStorage 当前库 + resonate body libraryId）
 - [ ] 本地 embedding / 本地向量库（V2）

@@ -1,6 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { InspirationItem } from "@/lib/types";
+import { getStoredOpenAIKey } from "@/lib/settings";
 import { Sparkles } from "lucide-react";
 
 interface InspirationPanelProps {
@@ -12,6 +15,11 @@ interface InspirationPanelProps {
 export default function InspirationPanel({ items, loading, maxItems = 6 }: InspirationPanelProps) {
   const visibleItems = items.slice(0, maxItems);
   const isEmpty = visibleItems.length === 0 && !loading;
+  const [hasApiKey, setHasApiKey] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setHasApiKey(!!getStoredOpenAIKey());
+  }, []);
 
   return (
     <div className="relative w-full max-w-3xl mx-auto min-h-[120px] flex flex-col items-center justify-center px-6 py-4">
@@ -26,6 +34,15 @@ export default function InspirationPanel({ items, loading, maxItems = 6 }: Inspi
           <p className="text-xs text-zinc-600">
             继续写，相关片段会出现在这里
           </p>
+          {hasApiKey === false && (
+            <p className="text-[10px] text-zinc-600 mt-1">
+              当前为演示数据。在{" "}
+              <Link href="/settings" className="text-violet-400/90 hover:text-violet-400 underline">
+                设置
+              </Link>{" "}
+              中填写 OpenAI API Key 可使用真实检索与知识库导入。
+            </p>
+          )}
         </div>
       )}
 

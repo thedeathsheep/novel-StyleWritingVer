@@ -29,10 +29,22 @@ export function searchChunks(
   queryEmbedding: number[],
   topK: number
 ): InspirationItem[] {
+  const scored = searchChunksWithScores(chunks, queryEmbedding, topK);
+  return scored.map((x) => x.item);
+}
+
+/**
+ * Same as searchChunks but returns items with similarity scores (for weighted merge).
+ */
+export function searchChunksWithScores(
+  chunks: ChunkWithEmbedding[],
+  queryEmbedding: number[],
+  topK: number
+): { item: InspirationItem; score: number }[] {
   const scored = chunks.map((c) => ({
     item: { text: c.text, source: c.source },
     score: cosineSimilarity(c.embedding, queryEmbedding),
   }));
   scored.sort((x, y) => y.score - x.score);
-  return scored.slice(0, topK).map((x) => x.item);
+  return scored.slice(0, topK);
 }

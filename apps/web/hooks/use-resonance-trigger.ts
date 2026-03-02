@@ -2,21 +2,39 @@
 
 import type { InspirationItem } from "@/lib/types";
 import { useCallback, useRef, useState } from "react";
+import { resonanceFetch } from "./use-resonance-fetch";
 
 const DEBOUNCE_MS = 1500;
-const TIMEOUT_MS = 2000;
 
 interface UseResonanceTriggerOptions {
   apiUrl?: string;
+  /** Optional: pass to resonate API (e.g. libraryId for user library). */
+  bodyExtra?: Record<string, unknown>;
 }
 
-export function useResonanceTrigger({ apiUrl = "/api/resonate" }: UseResonanceTriggerOptions = {}) {
+export function useResonanceTrigger({
+  apiUrl = "/api/resonate",
+  bodyExtra = {},
+}: UseResonanceTriggerOptions = {}) {
   const [items, setItems] = useState<InspirationItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const lastQuery = useRef("");
+
+  const mergeItems = useCallback((newItems: InspirationItem[]) => {
+    if (newItems.length === 0) return;
+    setItems((prev) => {
+      const merged = [...newItems, ...prev];
+      const seen = new Set<string>();
+      return merged.filter((it) => {
+        if (seen.has(it.text)) return false;
+        seen.add(it.text);
+        return true;
+      });
+    });
+  }, []);
 
   const trigger = useCallback(
     (query: string) => {
@@ -36,52 +54,26 @@ export function useResonanceTrigger({ apiUrl = "/api/resonate" }: UseResonanceTr
         setLoading(true);
         const triggerStartedAt = Date.now();
 
-        const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const newItems = await resonanceFetch({
+          query: trimmed,
+          signal: controller.signal,
+          apiUrl,
+          bodyExtra,
+        });
 
-        try {
-          const res = await fetch(apiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: trimmed }),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeout);
-
-          if (!res.ok) {
-            setLoading(false);
-            return;
-          }
-
-          const data = await res.json();
-          if (controller.signal.aborted) return;
-
-          const newItems: InspirationItem[] = data.items ?? [];
-          if (newItems.length > 0) {
-            setItems((prev) => {
-              const merged = [...newItems, ...prev];
-              const seen = new Set<string>();
-              return merged.filter((it) => {
-                if (seen.has(it.text)) return false;
-                seen.add(it.text);
-                return true;
-              });
-            });
-          }
-          if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
-            const elapsed = Date.now() - triggerStartedAt;
-            console.log(`[StyleEvent] resonate latency: ${elapsed}ms`);
-          }
-        } catch {
-          // aborted or network error — silent
-        } finally {
-          if (!controller.signal.aborted) {
-            setLoading(false);
-          }
+        if (controller.signal.aborted) {
+          setLoading(false);
+          return;
         }
+        mergeItems(newItems);
+        if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+          const elapsed = Date.now() - triggerStartedAt;
+          console.log(`[StyleEvent] resonate latency: ${elapsed}ms`);
+        }
+        setLoading(false);
       }, DEBOUNCE_MS);
     },
-    [apiUrl],
+    [apiUrl, bodyExtra, mergeItems],
   );
 
   const triggerImmediate = useCallback(
@@ -99,53 +91,26 @@ export function useResonanceTrigger({ apiUrl = "/api/resonate" }: UseResonanceTr
       setLoading(true);
       const triggerStartedAt = Date.now();
 
-      const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
       (async () => {
-        try {
-          const res = await fetch(apiUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: trimmed }),
-            signal: controller.signal,
-          });
-
-          clearTimeout(timeout);
-
-          if (!res.ok) {
-            setLoading(false);
-            return;
-          }
-
-          const data = await res.json();
-          if (controller.signal.aborted) return;
-
-          const newItems: InspirationItem[] = data.items ?? [];
-          if (newItems.length > 0) {
-            setItems((prev) => {
-              const merged = [...newItems, ...prev];
-              const seen = new Set<string>();
-              return merged.filter((it) => {
-                if (seen.has(it.text)) return false;
-                seen.add(it.text);
-                return true;
-              });
-            });
-          }
-          if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
-            const elapsed = Date.now() - triggerStartedAt;
-            console.log(`[StyleEvent] resonate latency: ${elapsed}ms`);
-          }
-        } catch {
-          // silent
-        } finally {
-          if (!controller.signal.aborted) {
-            setLoading(false);
-          }
+        const newItems = await resonanceFetch({
+          query: trimmed,
+          signal: controller.signal,
+          apiUrl,
+          bodyExtra,
+        });
+        if (controller.signal.aborted) {
+          setLoading(false);
+          return;
         }
+        mergeItems(newItems);
+        if (typeof window !== "undefined" && process.env.NODE_ENV === "development") {
+          const elapsed = Date.now() - triggerStartedAt;
+          console.log(`[StyleEvent] resonate latency: ${elapsed}ms`);
+        }
+        setLoading(false);
       })();
     },
-    [apiUrl],
+    [apiUrl, bodyExtra, mergeItems],
   );
 
   const clearItems = useCallback(() => {
