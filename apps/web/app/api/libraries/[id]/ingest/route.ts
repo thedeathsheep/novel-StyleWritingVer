@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
-import OpenAI from "openai";
 import {
   appendLibraryChunks,
   chunkText,
   getLibraryChunks,
 } from "@/lib/user-libraries";
 import type { LibraryChunk } from "@/lib/types";
+import {
+  getEmbeddingConfigFromRequest,
+  embedMany,
+} from "@/lib/ai-provider";
 
 const MAX_CHUNKS_PER_REQUEST = 50;
 
@@ -39,29 +42,33 @@ export async function POST(
       return NextResponse.json({ ok: true, chunksAdded: 0 });
     }
 
-    const apiKey = req.headers.get("X-OpenAI-API-Key")?.trim() || process.env.OPENAI_API_KEY;
-    if (!apiKey) {
+    const embeddingConfig = getEmbeddingConfigFromRequest(req);
+    if (!embeddingConfig.apiKey) {
       return NextResponse.json(
-        { error: "OPENAI_API_KEY not configured. Set it in Settings or in server .env" },
+        {
+          error:
+            "API key not configured. Set provider and key in Settings or in server .env (e.g. OPENAI_API_KEY, SILICONFLOW_API_KEY, AIHUBMIX_API_KEY, GOOGLE_GEMINI_API_KEY).",
+        },
         { status: 503 },
       );
     }
 
-    const openai = new OpenAI({ apiKey });
-    const model = "text-embedding-3-small";
     const batchSize = 20;
     const newChunks: LibraryChunk[] = [];
 
     for (let i = 0; i < segments.length; i += batchSize) {
       const batch = segments.slice(i, i + batchSize);
       const inputs = batch.map((s) => s.text);
-      const res = await openai.embeddings.create({ model, input: inputs });
+      const embeddings = await embedMany(embeddingConfig, inputs);
       for (let j = 0; j < batch.length; j++) {
-        newChunks.push({
-          text: batch[j].text,
-          source,
-          embedding: res.data[j].embedding,
-        });
+        const emb = embeddings[j];
+        if (emb) {
+          newChunks.push({
+            text: batch[j].text,
+            source,
+            embedding: emb,
+          });
+        }
       }
     }
 

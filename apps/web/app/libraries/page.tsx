@@ -3,7 +3,7 @@
 import { useLibraries, type LibraryWithCount } from "@/hooks/use-libraries";
 import { useCurrentLibrary } from "@/hooks/use-current-library";
 import { useResonanceLibraries } from "@/hooks/use-resonance-libraries";
-import { getStoredOpenAIKey } from "@/lib/settings";
+import { getStoredOpenAIKey, getStoredAIProvider } from "@/lib/settings";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Sparkles, Plus, Trash2, Upload, Check } from "lucide-react";
@@ -53,7 +53,12 @@ export default function LibrariesPage() {
       setIngestDone(false);
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       const storedKey = getStoredOpenAIKey();
-      if (storedKey) headers["X-OpenAI-API-Key"] = storedKey;
+      const provider = getStoredAIProvider();
+      if (storedKey) {
+        headers["X-AI-API-Key"] = storedKey;
+        headers["X-AI-Provider"] = provider;
+      }
+      if (storedKey && provider === "openai") headers["X-OpenAI-API-Key"] = storedKey;
       try {
         const res = await fetch(`/api/libraries/${id}/ingest`, {
           method: "POST",

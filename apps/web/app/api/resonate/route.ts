@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import { join } from "path";
-import OpenAI from "openai";
 import type { InspirationItem } from "@/lib/types";
 import { searchChunks, searchChunksWithScores, type ChunkWithEmbedding } from "@/lib/vector-store";
 import { getLibraryChunks } from "@/lib/user-libraries";
+import {
+  getEmbeddingConfigFromRequest,
+  embedOne,
+} from "@/lib/ai-provider";
 
 const TOP_K = 6;
 const TIMEOUT_MS = 2000;
@@ -186,20 +189,16 @@ export async function POST(req: Request) {
         ),
       ]);
 
-    const apiKey = req.headers.get("X-OpenAI-API-Key")?.trim() || process.env.OPENAI_API_KEY;
+    const embeddingConfig = getEmbeddingConfigFromRequest(req);
 
     const items = await withTimeout((async () => {
       const cached = getCached(trimmed, libraryId, libraries.length > 0 ? libraries : undefined);
       if (cached) return cached;
 
       // Multi-library: one embedding, then per-library search and weighted merge
-      if (libraries.length > 0 && apiKey) {
-        const openai = new OpenAI({ apiKey });
-        const res = await openai.embeddings.create({
-          model: "text-embedding-3-small",
-          input: trimmed,
-        });
-        const queryEmbedding = res.data[0].embedding;
+      if (libraries.length > 0 && embeddingConfig.apiKey) {
+        const queryEmbedding = await embedOne(embeddingConfig, trimmed);
+        if (!queryEmbedding) return searchMock(trimmed);
         const merged = new Map<string, { item: InspirationItem; score: number }>();
         for (const { id: libId, weight } of libraries) {
           const userChunks = await getLibraryChunks(libId);
@@ -224,32 +223,26 @@ export async function POST(req: Request) {
         return results;
       }
 
-      if (libraryId && apiKey) {
+      if (libraryId && embeddingConfig.apiKey) {
         const userChunks = await getLibraryChunks(libraryId);
         if (userChunks.length > 0) {
-          const openai = new OpenAI({ apiKey });
-          const res = await openai.embeddings.create({
-            model: "text-embedding-3-small",
-            input: trimmed,
-          });
-          const queryEmbedding = res.data[0].embedding;
-          const results = searchChunks(userChunks as ChunkWithEmbedding[], queryEmbedding, TOP_K);
-          setCache(trimmed, results, libraryId);
-          return results;
+          const queryEmbedding = await embedOne(embeddingConfig, trimmed);
+          if (queryEmbedding) {
+            const results = searchChunks(userChunks as ChunkWithEmbedding[], queryEmbedding, TOP_K);
+            setCache(trimmed, results, libraryId);
+            return results;
+          }
         }
       }
 
       const chunks = await loadEmbeddings();
-      if (apiKey && chunks && chunks.length > 0) {
-        const openai = new OpenAI({ apiKey });
-        const res = await openai.embeddings.create({
-          model: "text-embedding-3-small",
-          input: trimmed,
-        });
-        const queryEmbedding = res.data[0].embedding;
-        const results = searchChunks(chunks, queryEmbedding, TOP_K);
-        setCache(trimmed, results);
-        return results;
+      if (embeddingConfig.apiKey && chunks && chunks.length > 0) {
+        const queryEmbedding = await embedOne(embeddingConfig, trimmed);
+        if (queryEmbedding) {
+          const results = searchChunks(chunks, queryEmbedding, TOP_K);
+          setCache(trimmed, results);
+          return results;
+        }
       }
 
       await new Promise((r) => setTimeout(r, 150 + Math.random() * 200));

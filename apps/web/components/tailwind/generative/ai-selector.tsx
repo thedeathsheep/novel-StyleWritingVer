@@ -6,7 +6,7 @@ import { useCompletion } from "ai/react";
 import { ArrowUp } from "lucide-react";
 import { useEditor } from "novel";
 import { addAIHighlight } from "novel";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Markdown from "react-markdown";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
@@ -15,7 +15,23 @@ import Magic from "../ui/icons/magic";
 import { ScrollArea } from "../ui/scroll-area";
 import AICompletionCommands from "./ai-completion-command";
 import AISelectorCommands from "./ai-selector-commands";
+import { getStoredOpenAIKey, getStoredAIProvider } from "@/lib/settings";
 //TODO: I think it makes more sense to create a custom Tiptap extension for this functionality https://tiptap.dev/docs/editor/ai/introduction
+
+/** Inject stored API key and provider into every generate request so the app works without server env. */
+function useGenerateFetch() {
+  return useCallback((input: RequestInfo | URL, init?: RequestInit) => {
+    const key = getStoredOpenAIKey();
+    const provider = getStoredAIProvider();
+    const headers = new Headers(init?.headers);
+    if (key) {
+      headers.set("X-AI-API-Key", key);
+      headers.set("X-AI-Provider", provider);
+      if (provider === "openai") headers.set("X-OpenAI-API-Key", key);
+    }
+    return fetch(input, { ...init, headers });
+  }, []);
+}
 
 interface AISelectorProps {
   open: boolean;
@@ -25,10 +41,11 @@ interface AISelectorProps {
 export function AISelector({ onOpenChange }: AISelectorProps) {
   const { editor } = useEditor();
   const [inputValue, setInputValue] = useState("");
+  const generateFetch = useGenerateFetch();
 
   const { completion, complete, isLoading } = useCompletion({
-    // id: "novel",
     api: "/api/generate",
+    fetch: generateFetch,
     onResponse: (response) => {
       if (response.status === 429) {
         toast.error("You have reached your request limit for the day.");

@@ -31,8 +31,9 @@ export function useLibraries() {
       });
       if (!res.ok) return null;
       const lib = (await res.json()) as Library;
-      setLibraries((prev) => [...prev, { ...lib, chunksCount: 0 }]);
-      return lib;
+      const withCount: LibraryWithCount = { ...lib, chunksCount: 0 };
+      setLibraries((prev) => [...prev, withCount]);
+      return withCount;
     },
     [],
   );

@@ -1,5 +1,5 @@
 import type { InspirationItem } from "@/lib/types";
-import { getStoredOpenAIKey } from "@/lib/settings";
+import { getStoredOpenAIKey, getStoredAIProvider } from "@/lib/settings";
 
 const TIMEOUT_MS = 2000;
 
@@ -28,7 +28,12 @@ export async function resonanceFetch(options: ResonanceFetchOptions): Promise<In
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const storedKey = getStoredOpenAIKey();
-  if (storedKey) headers["X-OpenAI-API-Key"] = storedKey;
+  const provider = getStoredAIProvider();
+  if (storedKey) {
+    headers["X-AI-API-Key"] = storedKey;
+    headers["X-AI-Provider"] = provider;
+  }
+  if (storedKey && provider === "openai") headers["X-OpenAI-API-Key"] = storedKey;
 
   try {
     const res = await fetch(apiUrl, {
